@@ -1,0 +1,9 @@
+numpy
+opencv-python
+PyQt5
+Pillow
+ultralytics
+paddlepaddle
+matplotlib
+scipy
+scikit-image
