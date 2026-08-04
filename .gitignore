@@ -1,0 +1,31 @@
+# Python environments and generated files
+venv312/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local/editor files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+*.log
+.DS_Store
+
+# Local upload workspace
+.uploads/
+
+# Personal/test images and generated image outputs
+IDPhotoProcessor/test_face/*
+IDPhotoProcessor/output/*.jpg
+IDPhotoProcessor/output/*.jpeg
+IDPhotoProcessor/output/*.png
+IDPhotoProcessor/output/*.bmp
+IDPhotoProcessor/output/*.tif
+IDPhotoProcessor/output/*.tiff
