@@ -28,6 +28,7 @@
 ├── human_pp_humansegv2_lite_192x192_inference_model.../   # 人像分割模型
 ├── portrait_pp_humansegv1_lite_398x224_inference_model.../ # 人像分割模型
 ├── pyQT5/                                                # 图像处理课程实验 GUI
+├── web_api/                                              # FastAPI 在线处理接口与合约测试
 ├── requirements.txt                                      # Python 依赖
 └── 智慧校园证件照标准化预处理系统_*.md                   # 需求与界面设计文档
 ```
@@ -71,6 +72,38 @@ python BarcodeGUI.py
 cd pyQT5
 python main.py
 ```
+
+## 在线体验与 API
+
+项目也提供面向网页端的 FastAPI 接口。网页上传的图片只在内存中处理，处理完成后返回可下载的 JPEG 数据，不保存原图或结果图。
+
+在线接口复用 `IDPhotoProcessor` 的人脸检测、智能裁剪、背景替换和图像增强流程，支持蓝底、白底、红底，以及以下固定尺寸：
+
+| 规格 | 输出像素 |
+| --- | --- |
+| 小一寸 | 260 x 378 |
+| 标准一寸 | 295 x 413 |
+| 大一寸 | 390 x 567 |
+| 小二寸 | 413 x 531 |
+| 标准二寸 | 413 x 579 |
+| 大二寸 | 413 x 626 |
+
+默认输出为标准一寸，JPEG 元数据写入 300 DPI。接口对上传文件限制为 10 MB，并限制解码后图片不超过 2000 万像素。
+
+本地启动 API：
+
+```powershell
+python -m pip install -r web_api/requirements.txt
+python -m uvicorn web_api.app:app --host 127.0.0.1 --port 8090
+```
+
+运行合约测试：
+
+```powershell
+python -m pytest web_api/test_api_contract.py -q
+```
+
+部署到 Nginx 反向代理和 systemd 的说明见 [web_api/DEPLOY.md](web_api/DEPLOY.md)。生产环境应继续使用单实例服务，避免多个图像任务同时占满资源。
 
 ## 隐私与使用说明
 

@@ -1,0 +1,16 @@
+[Unit]
+Description=Smart Campus ID Photo API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/smart-campus-id-photo-processor
+ExecStart=/opt/smart-campus-id-photo-processor/.venv/bin/uvicorn web_api.app:app --host 127.0.0.1 --port 8090 --workers 1
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
