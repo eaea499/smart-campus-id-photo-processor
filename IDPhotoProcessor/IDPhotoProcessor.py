@@ -268,6 +268,13 @@ class IDPhotoProcessor:
                         'success': True,
                         'data': {'method': denoise_method}
                     })
+
+            if params.get('portrait_denoise', False) and face_rect is not None:
+                result = self.enhancer.denoise_portrait_region(result, face_rect)
+                processing_steps.append({
+                    'step': '人像去噪',
+                    'success': True,
+                })
             
             elapsed_time = time.time() - start_time
             

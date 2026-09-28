@@ -193,6 +193,40 @@ class ImageEnhancer:
             return None
         
         return cv2.bilateralFilter(image, d, sigma_color, sigma_space)
+
+    def denoise_portrait_region(self, image, face_region):
+        """Apply gentle bilateral denoising only around a detected face."""
+        if image is None or image.size == 0 or face_region is None:
+            return image
+
+        x, y, w, h = face_region
+        if w <= 0 or h <= 0 or x >= image.shape[1] or y >= image.shape[0]:
+            return image
+
+        margin_x = int(w * 0.2)
+        margin_y = int(h * 0.3)
+        x1 = max(0, x - margin_x)
+        y1 = max(0, y - margin_y)
+        x2 = min(image.shape[1], x + w + margin_x)
+        y2 = min(image.shape[0], y + h + margin_y)
+        if x1 >= x2 or y1 >= y2:
+            return image
+
+        region = image[y1:y2, x1:x2]
+        denoised_region = self.denoise_bilateral(region, d=7, sigma_color=45, sigma_space=45)
+        if denoised_region is None:
+            return image
+
+        feather = max(3, min(region.shape[:2]) // 8)
+        mask = cv2.GaussianBlur(np.full(region.shape[:2], 255, dtype=np.uint8), (0, 0), feather)
+        alpha = (mask.astype(np.float32) / 255.0)[..., np.newaxis]
+        result = image.copy()
+        result[y1:y2, x1:x2] = np.clip(
+            region.astype(np.float32) * (1.0 - alpha) + denoised_region.astype(np.float32) * alpha,
+            0,
+            255,
+        ).astype(np.uint8)
+        return result
     
     def denoise_nlmeans(self, image, h=10, h_color=10, template_size=7, search_size=21):
         """
@@ -255,24 +289,63 @@ class ImageEnhancer:
             return None
         
         result = image.copy()
-        
-        # 1. 自动亮度调整
-        result = self.auto_adjust_brightness(result, target_mean=135)
-        
-        # 2. 自适应直方图均衡化（轻度）
-        result = self.clahe(result, clip_limit=1.5, tile_size=8)
-        
-        # 3. 双边滤波去噪（保留边缘）
-        result = self.denoise_bilateral(result, d=9, sigma_color=75, sigma_space=75)
-        
-        # 4. 轻度锐化
-        result = self.sharpen(result, amount=0.5)
-        
-        # 5. 如果提供了人脸区域，针对性增强人脸
+
+        # Background color must not control portrait exposure. Apply a bounded
+        # adjustment only inside a softly blended face-and-shoulders region.
         if face_region is not None:
-            result = self._enhance_face_region(result, face_region)
-        
+            result = self._gently_adjust_face_brightness(result, face_region)
+
+        if face_region is None:
+            return result
+
+        return self.sharpen(result, amount=0.18)
+
+    def _gently_adjust_face_brightness(self, image, face_region):
+        """Brighten a valid face region without altering the certificate background."""
+        if image is None or image.size == 0 or face_region is None:
+            return image
+
+        x, y, w, h = face_region
+        if w <= 0 or h <= 0 or x >= image.shape[1] or y >= image.shape[0]:
+            return image
+
+        margin_x = int(w * 0.2)
+        margin_y = int(h * 0.3)
+        x1 = max(0, x - margin_x)
+        y1 = max(0, y - margin_y)
+        x2 = min(image.shape[1], x + w + margin_x)
+        y2 = min(image.shape[0], y + h + margin_y)
+        if x1 >= x2 or y1 >= y2:
+            return image
+
+        region = image[y1:y2, x1:x2]
+        luminance = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
+        adjustment = int(np.clip(128 - float(luminance.mean()), -12, 12))
+        if adjustment == 0:
+            return image
+
+        adjusted_region = self.adjust_brightness_contrast(region, brightness=adjustment)
+        alpha = self._feathered_region_alpha(region.shape[:2])
+
+        result = image.copy()
+        result[y1:y2, x1:x2] = np.clip(
+            region.astype(np.float32) * (1.0 - alpha) + adjusted_region.astype(np.float32) * alpha,
+            0,
+            255,
+        ).astype(np.uint8)
         return result
+
+    @staticmethod
+    def _feathered_region_alpha(shape):
+        """Return an alpha mask that is zero on every ROI edge and soft inside."""
+        height, width = shape
+        feather = max(3, min(height, width) // 8)
+        y_distance = np.minimum(np.arange(height), np.arange(height)[::-1])
+        x_distance = np.minimum(np.arange(width), np.arange(width)[::-1])
+        distance_to_edge = np.minimum.outer(y_distance, x_distance).astype(np.float32)
+        alpha = np.clip(distance_to_edge / float(feather), 0.0, 1.0)
+        alpha = cv2.GaussianBlur(alpha, (0, 0), max(1.0, feather / 3.0))
+        return alpha[..., np.newaxis]
     
     def _enhance_face_region(self, image, face_region):
         """

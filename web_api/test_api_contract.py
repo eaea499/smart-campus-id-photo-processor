@@ -98,6 +98,90 @@ def test_process_defaults_to_standard_one_inch():
     assert response.json()["result_size"] == {"width": 295, "height": 413}
 
 
+def test_process_defaults_to_existing_student_card_enhancement():
+    response = client.post(
+        "/process",
+        files={"image": ("photo.jpg", encoded_image(), "image/jpeg")},
+        data={"bg_color": "blue"},
+    )
+    assert response.status_code == 200
+    assert api.processor.last_params["brightness"] == 0
+    assert api.processor.last_params["contrast"] == 10
+    assert api.processor.last_params["auto_enhance"] is False
+
+
+def test_process_passes_valid_manual_enhancement_values():
+    response = client.post(
+        "/process",
+        files={"image": ("photo.jpg", encoded_image(), "image/jpeg")},
+        data={"bg_color": "blue", "brightness": "-20", "contrast": "35", "auto_enhance": "false"},
+    )
+    assert response.status_code == 200
+    assert api.processor.last_params["brightness"] == -20
+    assert api.processor.last_params["contrast"] == 35
+    assert api.processor.last_params["auto_enhance"] is False
+
+
+def test_process_enables_auto_enhancement_when_requested():
+    response = client.post(
+        "/process",
+        files={"image": ("photo.jpg", encoded_image(), "image/jpeg")},
+        data={"bg_color": "blue", "brightness": "-20", "contrast": "35", "auto_enhance": "true"},
+    )
+    assert response.status_code == 200
+    assert api.processor.last_params["auto_enhance"] is True
+
+
+def test_process_defaults_to_portrait_denoise_disabled():
+    response = client.post(
+        "/process",
+        files={"image": ("photo.jpg", encoded_image(), "image/jpeg")},
+        data={"bg_color": "blue"},
+    )
+    assert response.status_code == 200
+    assert api.processor.last_params["portrait_denoise"] is False
+
+
+def test_process_enables_portrait_denoise_when_requested():
+    response = client.post(
+        "/process",
+        files={"image": ("photo.jpg", encoded_image(), "image/jpeg")},
+        data={"bg_color": "blue", "portrait_denoise": "true"},
+    )
+    assert response.status_code == 200
+    assert api.processor.last_params["portrait_denoise"] is True
+
+
+def test_process_rejects_invalid_portrait_denoise_value():
+    response = client.post(
+        "/process",
+        files={"image": ("photo.jpg", encoded_image(), "image/jpeg")},
+        data={"bg_color": "blue", "portrait_denoise": "sometimes"},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "人像去噪参数无效。"
+
+
+def test_process_rejects_out_of_range_brightness():
+    response = client.post(
+        "/process",
+        files={"image": ("photo.jpg", encoded_image(), "image/jpeg")},
+        data={"bg_color": "blue", "brightness": "51"},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "亮度只能在 -50 到 50 之间。"
+
+
+def test_process_rejects_invalid_auto_enhance_value():
+    response = client.post(
+        "/process",
+        files={"image": ("photo.jpg", encoded_image(), "image/jpeg")},
+        data={"bg_color": "blue", "auto_enhance": "sometimes"},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "自动增强参数无效。"
+
+
 def test_process_accepts_all_standard_sizes():
     expected = {
         "小一寸": {"width": 260, "height": 378},

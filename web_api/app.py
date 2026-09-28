@@ -31,6 +31,8 @@ ALLOWED_PHOTO_SIZES = {
     "标准二寸",
     "大二寸",
 }
+ENHANCEMENT_MIN = -50
+ENHANCEMENT_MAX = 50
 
 app = FastAPI(title="Smart Campus ID Photo API", version="1.0.0")
 app.add_middleware(
@@ -91,16 +93,50 @@ def _data_url(image: np.ndarray) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(encoded).decode("ascii")
 
 
+def _parse_enhancement_value(value: str, label: str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"{label}只能在 -50 到 50 之间。") from exc
+    if not ENHANCEMENT_MIN <= parsed <= ENHANCEMENT_MAX:
+        raise HTTPException(status_code=422, detail=f"{label}只能在 -50 到 50 之间。")
+    return parsed
+
+
+def _parse_auto_enhance(value: str) -> bool:
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise HTTPException(status_code=422, detail="自动增强参数无效。")
+
+
+def _parse_portrait_denoise(value: str) -> bool:
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise HTTPException(status_code=422, detail="人像去噪参数无效。")
+
+
 @app.post("/process")
 async def process(
     image: UploadFile = File(...),
     bg_color: str = Form("blue"),
     size: str = Form("标准一寸"),
+    brightness: str = Form("0"),
+    contrast: str = Form("10"),
+    auto_enhance: str = Form("false"),
+    portrait_denoise: str = Form("false"),
 ):
     if bg_color not in ALLOWED_BACKGROUND_COLORS:
         raise HTTPException(status_code=422, detail="背景颜色只能选择蓝底、白底或红底。")
     if size not in ALLOWED_PHOTO_SIZES:
         raise HTTPException(status_code=422, detail="证件照尺寸不受支持，请重新选择。")
+    parsed_brightness = _parse_enhancement_value(brightness, "亮度")
+    parsed_contrast = _parse_enhancement_value(contrast, "对比度")
+    parsed_auto_enhance = _parse_auto_enhance(auto_enhance)
+    parsed_portrait_denoise = _parse_portrait_denoise(portrait_denoise)
     content = await image.read(MAX_UPLOAD_BYTES + 1)
     source = _decode_image(content)
     original_size = {"width": int(source.shape[1]), "height": int(source.shape[0])}
@@ -111,6 +147,10 @@ async def process(
     params = IDPhotoProcessor.PRESETS["学生证标准"].copy()
     params["bg_color"] = bg_color
     params["size"] = size
+    params["brightness"] = parsed_brightness
+    params["contrast"] = parsed_contrast
+    params["auto_enhance"] = parsed_auto_enhance
+    params["portrait_denoise"] = parsed_portrait_denoise
     started = time.perf_counter()
     try:
         with processor_lock:

@@ -308,13 +308,16 @@ class BackgroundRemover:
         if len(mask.shape) == 3:
             mask = mask[:, :, 0]
         
-        # 归一化mask到0-1范围
+        # HumanSeg's low-resolution boundary confidence includes source
+        # background colour. Pull the alpha edge inward before compositing so
+        # a pale source background cannot become a visible white halo.
         mask_norm = mask.astype(np.float32) / 255.0
-        
-        # 边缘羽化
+        mask_norm = cv2.erode(mask_norm, np.ones((3, 3), dtype=np.uint8), iterations=1)
+
+        # Keep just a narrow transition. A large blur reintroduces the
+        # uncertain pixels that the erosion intentionally removed.
         if feather_radius > 0:
-            mask_norm = cv2.GaussianBlur(mask_norm, 
-                                         (feather_radius*2+1, feather_radius*2+1), 0)
+            mask_norm = cv2.GaussianBlur(mask_norm, (0, 0), min(0.45, feather_radius * 0.09))
         
         # 扩展mask到3通道
         mask_3channel = np.stack([mask_norm] * 3, axis=-1)
@@ -326,9 +329,7 @@ class BackgroundRemover:
         else:
             foreground = image
         
-        # 混合前景和背景
-        result = (foreground * mask_3channel + 
-                  background * (1 - mask_3channel)).astype(np.uint8)
+        result = (foreground * mask_3channel + background * (1 - mask_3channel)).astype(np.uint8)
         
         return result
     
@@ -414,13 +415,12 @@ class BackgroundRemover:
 
     def _polish_mask(self, mask):
         """
-        蒙版后处理：二值化 → 去噪 → 平滑
+        Preserve soft HumanSeg alpha while removing isolated mask noise.
         """
-        _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-        k = np.ones((3, 3), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k, iterations=1)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k, iterations=1)
-        return mask
+        if mask is None or mask.size == 0:
+            return mask
+        smoothed = cv2.GaussianBlur(mask.astype(np.float32), (0, 0), 0.8)
+        return np.clip(smoothed, 0, 255).astype(np.uint8)
 
     def _fill_edge_background(self, mask):
         """
